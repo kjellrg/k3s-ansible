@@ -1,0 +1,39 @@
+---
+# tasks file for hardening
+- name: Cluster Hardening - Ensure folder permission are strict
+  command: |
+    find {{ item }} -not -path "*containerd*" -exec chmod -c go= {} \;
+  register: chmod_result
+  changed_when: "chmod_result.stdout != \"\""
+  with_items:
+    - /etc/rancher
+    - /var/lib/rancher
+
+- name: Set sysctl variables
+  sysctl:
+    name: '{{ item.name }}'
+    value: '{{ item.value }}'
+    state: present
+    sysctl_set: yes
+    reload: yes
+  with_items:
+    - {name: vm.panic_on_oom, value: 0}
+    - {name: vm.overcommit_memory, value: 1}
+    - {name: kernel.panic, value: 10}
+    - {name: kernel.panic_on_oops, value: 1}
+    - {name: kernel.keys.root_maxbytes, value: 25000000}
+
+- name: Create log directory
+  ansible.builtin.file:
+    path: '/var/lib/rancher/k3s/server/logs'
+    state: directory
+    mode: '0755'
+
+- name: Copy audit manifest to first master
+  template:
+    src: "audit.yaml"
+    dest: "/var/lib/rancher/k3s/server/audit.yaml.j2"
+    owner: root
+    group: root
+    mode: 0600
+  when: ansible_host == hostvars[groups['master'][0]]['ansible_host'] | default(groups['master'][0])
